@@ -24,8 +24,52 @@ const failing = () => a.checks.filter((c) => c.command && results[c.command]?.co
 const hint = (h) => (h ? ` <span class="hint">— ${h}</span>` : '');
 const callout = (title, body) => `<div class="callout"><b>${title}</b>${body}</div>`;
 
+// 지금까지의 답으로 하네스가 실제로 어떻게 도는지 그린다. 꺼진 부품은 흐리게.
+function diagram() {
+  const V = T.viz;
+  const node = (cls, title, sub) => `<div class="node ${cls}"><b>${title}</b><span>${sub}</span></div>`;
+  const checks = a.checks.filter((c) => c.command).map((c) => c.label || c.command);
+  if (a.kb) checks.push(V.docsCheck); // 지식 베이스를 켜면 링크 검사가 게이트에 붙는다
+  const rules = a.noRead.length + a.noEdit.length + a.denyCommands.length + (a.gate ? 3 : 0);
+  const work = a.loop
+    ? `${node('planner', V.planner, V.plannerSub)}
+       <div class="arr">→</div>
+       <div class="loop"><span class="tag">↻ ${V.loopTag(a.maxAttempts)}</span>
+         ${node('gen', V.generator, V.generatorSub)}
+         <div class="arr ex">⇄<small>${V.exchange}</small></div>
+         ${node('eval', V.evaluator, V.evaluatorSub)}
+       </div>`
+    : node('direct', V.direct, V.directSub);
+  return `
+    <section class="viz" aria-label="${esc(V.title)}">
+      <h3>${V.title}</h3>
+      <div class="row1">${node('user', V.request, a.loop ? V.requestSub : '')}<div class="arr">→</div>${work}</div>
+      <div class="arr down">↓</div>
+      <div class="node gate ${a.gate ? '' : 'off'}"><b>${V.gate}${a.gate ? '' : ` · ${V.off}`}</b><span>${a.gate ? `${esc(checks.join(' · '))} — ${V.gateSub}` : V.gateOff}</span></div>
+      <div class="guard">🔒 ${rules ? V.guard(rules) : V.guardNone}</div>
+    </section>`;
+}
+
 // 각 단계: render() → HTML, bind() → 입력을 a에 반영, blocked() → 다음으로 못 가는 이유
+// 단계 번호 (에이전트 단계가 맨 앞)
+const S = { agents: 0, project: 1, structure: 2, checks: 3, run: 4, guard: 5, parts: 6, review: 7 };
+const AGENTS = ['claude', 'codex', 'cursor'];
+const VERIFIED = ['claude']; // 실제 세션으로 동작을 확인한 도구 — 나머지는 확인 전까지 '실험적'
+
 const VIEWS = [
+  {
+    render: () => `
+      <h2>${T.pa.title}</h2>
+      <p class="lead">${T.pa.lead}</p>
+      ${AGENTS.map((k) => {
+        const info = T.pa.list[k];
+        return `<label class="toggle agent"><input type="checkbox" data-agent="${k}" ${a.agents.includes(k) ? 'checked' : ''}>
+          <div><h3>${info.name} <span class="badge ${VERIFIED.includes(k) ? 'new' : 'update'}">${VERIFIED.includes(k) ? T.pa.verified : T.pa.experimental}</span></h3>
+          <ul class="caps">${info.items.map(([m, t]) => `<li class="${m}">${t}</li>`).join('')}</ul></div></label>`;
+      }).join('')}`,
+    bind: () => { a.agents = AGENTS.filter((k) => $(`[data-agent="${k}"]`)?.checked); },
+    blocked: () => (a.agents.length ? '' : T.pa.need),
+  },
   {
     render: () => `
       <h2>${T.p1.title}</h2>
@@ -33,7 +77,7 @@ const VIEWS = [
       <label class="f" for="name">${T.p1.name}</label><input type="text" id="name" value="${esc(a.name)}">
       <label class="f" for="summary">${T.p1.summary}${hint(T.optional)}</label><input type="text" id="summary" value="${esc(a.summary)}" placeholder="${esc(T.p1.summaryPh)}">
       <label class="f">${T.p1.dirs}${hint(T.p1.dirsHint)}</label>
-      ${a.dirs.map((d, i) => `<div class="dirrow"><code>${esc(d.name)}/</code><input type="text" data-dir="${i}" value="${esc(d.note)}" placeholder="${esc(T.p1.dirPh(d.peek ?? []))}" class="${d.auto ? 'guessed' : ''}"></div>`).join('')}
+      ${a.dirs.map((d, i) => `<div class="dirrow"><code title="${esc((d.peek ?? []).join('  '))}">${esc(d.name)}/</code><input type="text" data-dir="${i}" value="${esc(d.note)}" placeholder="${esc(T.p1.dirPh)}" class="${d.auto ? 'guessed' : ''}"></div>`).join('')}
       <label class="f" for="rules">${T.p1.rules}${hint(T.p1.rulesHint)}</label>
       <textarea id="rules" placeholder="${esc(T.p1.rulesPh)}">${esc(a.rules.join('\n'))}</textarea>
       <div class="hint">${T.p1.suggest}</div>
@@ -136,7 +180,8 @@ const VIEWS = [
       <label class="toggle"><input type="checkbox" id="gate" ${a.gate ? 'checked' : ''}><div><h3>${T.p5.gateT}</h3><p>${T.p5.gateB}</p></div></label>
       <label class="toggle"><input type="checkbox" id="loop" ${a.loop ? 'checked' : ''}><div><h3>${T.p5.loopT}</h3><p>${T.p5.loopB}</p></div></label>
       <label class="f" for="max">${T.p5.max}${hint(T.p5.maxHint)}</label>
-      <input type="number" id="max" min="1" max="10" value="${a.maxAttempts}" style="width:100px">`,
+      <input type="number" id="max" min="1" max="10" value="${a.maxAttempts}" style="width:100px">
+      ${diagram()}`,
     bind: () => {
       a.gate = $('#gate').checked;
       a.loop = $('#loop').checked;
@@ -148,7 +193,7 @@ const VIEWS = [
     render: () => installed
       ? `<div class="done"><h2>${T.done.title}</h2>
           <p>${installed.filter((f) => f.status !== 'same').map((f) => `<code>${esc(f.path)}</code>`).join(' ')}</p>
-          <p>${T.done.next}</p><ol><li>${T.done.s1}</li>${a.loop ? `<li>${T.done.s2}</li>` : ''}${a.gate ? `<li>${T.done.s3}</li>` : ''}<li>${T.done.s4}</li></ol>
+          <p>${T.done.next}</p><ol>${a.agents.map((k) => `<li>${T.done.agent[k]}</li>`).join('')}<li>${T.done.s1}</li>${a.loop ? `<li>${T.done.s2}</li>` : ''}${a.gate ? `<li>${T.done.s3}</li>` : ''}<li>${T.done.s4}</li></ol>
           <p class="hint">${T.done.close}</p></div>`
       : `
       <h2>${T.p6.title}</h2>
@@ -204,7 +249,7 @@ document.addEventListener('click', async (e) => {
   const [ev, arg] = Object.entries(el.dataset)[0] ?? [];
   error = '';
   try {
-    if (ev === 'lang') { setLang(arg); if ((step === 1 || step === VIEWS.length - 1) && !installed) await refreshPlan(); }
+    if (ev === 'lang') { setLang(arg); if ((step === S.structure || step === S.review) && !installed) await refreshPlan(); }
     else if (el.id === 'prev') { step--; await VIEWS[step].enter?.(); }
     else if (el.id === 'next') {
       if (step === VIEWS.length - 1) { a.lang = lang; installed = await api('/api/install', a); }
@@ -216,11 +261,13 @@ document.addEventListener('click', async (e) => {
   }
   draw();
 });
-// 구조 단계의 체크박스를 바꾸면 만들어질 파일 목록을 다시 계산
+// 구조 단계: 체크박스를 바꾸면 만들어질 파일 목록을 다시 계산 / 부품 단계: 구조도를 다시 그림
 document.addEventListener('change', async (e) => {
-  if (step !== 1 || !['kb', 'feat'].includes(e.target.id)) return;
+  const structure = step === S.structure && ['kb', 'feat'].includes(e.target.id);
+  const parts = step === S.parts && ['gate', 'loop', 'max'].includes(e.target.id);
+  if (!structure && !parts) return;
   VIEWS[step].bind();
-  await refreshPlan();
+  if (structure) await refreshPlan();
   draw();
 });
 // 입력 중 '다음' 버튼 상태 갱신 (예: 이름을 지우면 비활성)
@@ -242,13 +289,13 @@ if (!d) {
   const dirs = d.dirs.map((x) => (x.note ? { ...x, auto: false } : x.role ? { ...x, note: T.roles[x.role], auto: true } : { ...x, auto: false }));
   // 다시 실행하면 지난 답을, 처음이면 감지한 값을 기본값으로
   a = saved
-    ? { ...saved, checks: saved.checks.filter((c) => c.kind !== 'docs'), dirs: dirs.map((x) => { const s = saved.dirs?.find((s) => s.name === x.name); return s ? { ...x, note: s.note, auto: false } : x; }) }
+    ? { agents: ['claude'], ...saved, checks: saved.checks.filter((c) => c.kind !== 'docs'), dirs: dirs.map((x) => { const s = saved.dirs?.find((s) => s.name === x.name); return s ? { ...x, note: s.note, auto: false } : x; }) }
     : {
         name: d.name, summary: d.summary, dirs, rules: [],
         checks: d.checks.map((c) => ({ ...c, label: T.p2.kinds[c.kind] })), run: d.run,
         noRead: d.protect.filter((p) => p.startsWith('.env')), noEdit: d.protect.filter((p) => !p.startsWith('.env')),
         denyCommands: ['git push --force*', 'git reset --hard*'],
-        kb: true, features: false,
+        agents: ['claude'], kb: true, features: false,
         gate: d.checks.length > 0, loop: true, maxAttempts: 3,
       };
   draw();

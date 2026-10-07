@@ -62,9 +62,32 @@
   .toggle input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--accent); }
   .toggle h3 { margin: 0 0 2px; font-size: 15px; } .toggle p { margin: 0; color: var(--dim); font-size: 13px; }
 
+  .badge.remove { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+  ul.caps { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; color: var(--dim); }
+  ul.caps li { padding: 1px 0 1px 18px; position: relative; }
+  ul.caps li::before { position: absolute; left: 0; font-weight: 700; }
+  ul.caps li.ok::before { content: "✓"; color: var(--ok); } ul.caps li.warn::before { content: "!"; color: #c48a16; } ul.caps li.no::before { content: "✕"; color: var(--bad); }
+  .toggle.agent h3 .badge { margin-left: 6px; vertical-align: 1px; }
   .src { font: 500 11px ui-sans-serif, system-ui; color: var(--dim); margin-left: 6px; }
   ul.tree { list-style: none; margin: 0 0 8px; padding: 10px 12px; background: var(--bg); border-radius: 8px; columns: 2; font-size: 12px; }
   ul.tree li { break-inside: avoid; padding: 2px 0; }
+  .viz { margin-top: 24px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+  .viz h3 { margin: 0 0 14px; font-size: 14px; }
+  .viz .row1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .viz .node { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--c, var(--line)); background: var(--panel); min-width: 120px; }
+  .viz .node b { font-size: 13px; color: var(--c, var(--ink)); }
+  .viz .node span { font-size: 11px; color: var(--dim); }
+  .viz .user { --c: var(--dim); } .viz .planner { --c: #c48a16; } .viz .gen { --c: var(--accent); } .viz .eval { --c: var(--ok); } .viz .direct { --c: var(--accent); flex: 1; }
+  .viz .loop { position: relative; display: flex; align-items: center; gap: 8px; padding: 22px 10px 10px; border: 1.5px dashed var(--line); border-radius: 12px; flex: 1; }
+  .viz .loop .tag { position: absolute; top: 4px; left: 10px; font-size: 11px; color: var(--dim); }
+  .viz .loop .node { flex: 1; }
+  .viz .arr { color: var(--dim); font-size: 18px; text-align: center; line-height: 1; }
+  .viz .arr small { display: block; font-size: 10px; margin-top: 2px; white-space: nowrap; }
+  .viz .arr.down { margin: 8px 0; }
+  .viz .gate { --c: var(--bad); }
+  .viz .off { opacity: .45; border-style: dashed; }
+  .viz .guard { margin-top: 10px; font-size: 12px; color: var(--dim); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); }
+  @media (max-width: 640px) { .viz .row1, .viz .loop { flex-direction: column; align-items: stretch; } .viz .row1 > .arr { transform: rotate(90deg); } }
   .files { display: grid; grid-template-columns: 260px 1fr; gap: 14px; }
   .files ul { list-style: none; margin: 0; padding: 0; }
   .files li button { width: 100%; text-align: left; border: 0; border-radius: 6px; padding: 6px 8px; font: 12px ui-monospace, monospace; display: flex; gap: 8px; }
