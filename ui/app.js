@@ -65,7 +65,7 @@ const VIEWS = [
         const info = T.pa.list[k];
         return `<label class="toggle agent"><input type="checkbox" data-agent="${k}" ${a.agents.includes(k) ? 'checked' : ''}>
           <div><h3>${info.name} <span class="badge ${VERIFIED.includes(k) ? 'new' : 'update'}">${VERIFIED.includes(k) ? T.pa.verified : T.pa.experimental}</span></h3>
-          <ul class="caps">${info.items.map(([m, t]) => `<li class="${m}">${t}</li>`).join('')}</ul></div></label>`;
+          <ul class="caps">${info.items.map(([m, t]) => `<li class="c-${m}">${t}</li>`).join('')}</ul></div></label>`;
       }).join('')}`,
     bind: () => { a.agents = AGENTS.filter((k) => $(`[data-agent="${k}"]`)?.checked); },
     blocked: () => (a.agents.length ? '' : T.pa.need),

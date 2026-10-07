@@ -92,7 +92,7 @@ export const I18N = {
     viz: {
       title: 'How your harness runs',
       request: 'You', requestSub: '/harness-feature add login',
-      direct: 'Claude', directSub: 'works on your request',
+      direct: 'Agent', directSub: 'works on your request',
       planner: 'Planner', plannerSub: 'writes the spec · read-only',
       generator: 'Generator', generatorSub: 'proposes contract · builds',
       evaluator: 'Evaluator', evaluatorSub: 'runs it for real · cannot edit',
@@ -216,7 +216,7 @@ export const I18N = {
     viz: {
       title: '하네스가 돌아가는 구조',
       request: '사용자', requestSub: '/harness-feature 로그인 추가',
-      direct: 'Claude', directSub: '요청을 바로 작업',
+      direct: '에이전트', directSub: '요청을 바로 작업',
       planner: 'Planner', plannerSub: '스펙 작성 · 읽기 전용',
       generator: 'Generator', generatorSub: '계약 제안 · 구현',
       evaluator: 'Evaluator', evaluatorSub: '실제로 실행 · 수정 불가',
@@ -340,7 +340,7 @@ export const I18N = {
     viz: {
       title: 'ハーネスの動き方',
       request: 'ユーザー', requestSub: '/harness-feature ログイン追加',
-      direct: 'Claude', directSub: '依頼をそのまま作業',
+      direct: 'エージェント', directSub: '依頼をそのまま作業',
       planner: 'Planner', plannerSub: '仕様を書く · 読み取り専用',
       generator: 'Generator', generatorSub: '契約を提案 · 実装',
       evaluator: 'Evaluator', evaluatorSub: '実際に動かす · 編集不可',
