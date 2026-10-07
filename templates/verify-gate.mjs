@@ -1,16 +1,23 @@
 #!/usr/bin/env node
-// harness-kit 완료 게이트 (Stop 훅).
-// AI가 작업을 끝내려 할 때 .claude/harness.json 의 검증 명령을 돌린다. 하나라도 실패하면 exit 2 로 종료를 막고,
-// 실패 출력을 AI에게 돌려준다 → AI는 고치고 다시 끝내야 한다. (Claude Code는 연속 8번 막히면 스스로 멈춘다)
+// harness-kit completion gate (Stop hook).
+// When the AI tries to finish, run the checks in .claude/harness.json. If any fails, exit 2 to block finishing and
+// hand the failure output back to the AI — it has to fix things and finish again. (Claude Code stops on its own after 8 blocks in a row.)
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
-const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const { checks = [] } = JSON.parse(readFileSync(join(root, '.claude', 'harness.json'), 'utf8'));
+const MSG = {
+  en: ['Completion gate failed — these checks must pass before you can finish.', 'Fix the cause and finish again. Never weaken or delete a test or a check to make it pass.'],
+  ko: ['완료 게이트 실패 — 아래 검증이 통과해야 작업을 끝낼 수 있다.', '원인을 고친 뒤 다시 끝내라. 테스트나 검증 명령을 약화·삭제해서 통과시키지 마라.'],
+  ja: ['完了ゲート失敗 — 以下のチェックが成功しないと作業を終えられない。', '原因を直してからもう一度終えること。テストやチェックを弱めたり削除したりして通さないこと。'],
+};
 
-// 바뀐 파일이 없으면(질문에 답만 한 경우) 검사할 것이 없다.
-// ponytail: 세션 중에 커밋까지 해버리면 깨끗한 상태로 보여 건너뛴다. 문제되면 세션 시작 커밋과 비교하도록.
+const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+const { checks = [], lang = 'en' } = JSON.parse(readFileSync(join(root, '.claude', 'harness.json'), 'utf8'));
+const [failed, fix] = MSG[lang] ?? MSG.en;
+
+// Nothing changed (the AI only answered a question) → nothing to verify.
+// ponytail: if the AI commits mid-session the tree looks clean and the gate skips; compare against the session's start commit if that matters.
 const git = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' });
 if (git.status === 0 && !git.stdout.trim()) process.exit(0);
 
@@ -24,8 +31,5 @@ for (const { label, command } of checks) {
 }
 if (!failures.length) process.exit(0);
 
-process.stderr.write(
-  `완료 게이트 실패 — 아래 검증이 통과해야 작업을 끝낼 수 있다.\n\n${failures.join('\n\n')}\n\n` +
-  `원인을 고친 뒤 다시 끝내라. 테스트나 검증 명령을 약화·삭제해서 통과시키지 마라.`,
-);
+process.stderr.write(`${failed}\n\n${failures.join('\n\n')}\n\n${fix}`);
 process.exit(2);

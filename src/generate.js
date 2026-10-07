@@ -1,19 +1,25 @@
 // 마법사 답변 → 설치할 파일 목록. AI를 쓰지 않는다: 같은 답이면 항상 같은 결과.
-// 기존 파일은 덮어쓰지 않고 병합한다 (AGENTS.md/CLAUDE.md는 관리 블록만 교체, settings.json은 우리 항목만 교체).
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+// 기존 파일은 덮어쓰지 않는다: AGENTS.md/CLAUDE.md는 관리 블록만 교체, settings.json은 우리 항목만 교체,
+// 지식 베이스 시작 문서는 없을 때만 만든다.
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { CONTENT } from './content.js';
 
 const TEMPLATES = new URL('../templates/', import.meta.url);
 const tpl = (name) => readFileSync(new URL(name, TEMPLATES), 'utf8');
 const fill = (s, vars) => s.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? '');
 
-const START = '<!-- harness-kit:start — 이 블록은 npx harness-kit 이 관리한다. 바꾸려면 마법사를 다시 실행하라. -->';
+const START_TAG = '<!-- harness-kit:start';
+const START = `${START_TAG} — managed by npx harness-kit; rerun the wizard to change it -->`;
 const END = '<!-- harness-kit:end -->';
 const GATE = '.claude/hooks/verify-gate.mjs';
+const DOCS_CHECK = '.claude/hooks/check-docs.mjs';
+const DOCS_CHECK_CMD = `node ${DOCS_CHECK}`;
 
-// answers 예시는 test/generate.test.js 참고
 export const DEFAULTS = {
+  lang: 'en',
   name: '', summary: '', dirs: [], rules: [],
+  kb: true, features: false,
   checks: [], run: { command: '', url: '' },
   noRead: [], noEdit: [], denyCommands: [],
   gate: true, loop: true, maxAttempts: 3,
@@ -32,36 +38,81 @@ export function denyRules(a) {
   ];
 }
 
-const list = (items, empty = '- (없음)') => (items.length ? items.join('\n') : empty);
+// 이미 있는 아키텍처 문서(대소문자 무관, 루트 또는 docs/)를 쓴다. 없으면 ARCHITECTURE.md를 새로 만든다.
+function findArchitecture(dir) {
+  for (const sub of ['', 'docs']) {
+    const d = join(dir, sub);
+    const hit = existsSync(d) && readdirSync(d).find((f) => /^architecture\.md$/i.test(f));
+    if (hit) return sub ? `${sub}/${hit}` : hit;
+  }
+  return null;
+}
 
-function agentsBlock(a) {
+// OpenAI "Harness engineering"의 지식 베이스 구조
+function knowledgeBase(a, L, archPath) {
+  const d = L.docs;
+  return {
+    ...(archPath ? {} : { 'ARCHITECTURE.md': d.architecture(a.name) }),
+    'docs/design-docs/index.md': d.designIndex,
+    'docs/design-docs/core-beliefs.md': d.coreBeliefs,
+    'docs/product-specs/index.md': d.specsIndex,
+    'docs/exec-plans/active/.gitkeep': '',
+    'docs/exec-plans/completed/.gitkeep': '',
+    'docs/exec-plans/tech-debt-tracker.md': d.techDebt,
+    'docs/references/README.md': d.references,
+    'docs/generated/README.md': d.generated,
+    'docs/QUALITY_SCORE.md': d.quality,
+    'docs/RELIABILITY.md': d.reliability,
+    'docs/SECURITY.md': d.security,
+  };
+}
+
+function agentsBlock(a, L, archPath) {
+  const B = L.block;
+  const rows = a.kb
+    ? [
+        [B.mapRows.architecture, archPath ?? 'ARCHITECTURE.md'],
+        [B.mapRows.designDocs, 'docs/design-docs/index.md'],
+        [B.mapRows.specs, 'docs/product-specs/index.md'],
+        [B.mapRows.plans, 'docs/exec-plans/'],
+        [B.mapRows.quality, 'docs/QUALITY_SCORE.md'],
+        [B.mapRows.reliability, 'docs/RELIABILITY.md'],
+        [B.mapRows.security, 'docs/SECURITY.md'],
+        [B.mapRows.references, 'docs/references/'],
+        [B.mapRows.generated, 'docs/generated/'],
+        ...(a.features ? [[B.mapRows.features, 'docs/features.json']] : []),
+      ]
+    : [];
   const rules = [
-    ...a.rules.filter(Boolean).map((r) => `- ${r}`),
-    ...(a.gate ? ['- 작업을 끝내기 전에 아래 검증 명령이 모두 통과해야 한다. 실패하면 완료 게이트(Stop 훅)가 종료를 막는다.'] : []),
-    '- 테스트나 검증 명령을 약화·삭제해서 통과시키지 않는다.',
+    ...a.rules.filter(Boolean),
+    ...(a.gate ? [B.gateRule] : []),
+    B.noWeaken,
+    ...(a.features ? [B.featuresRule] : []),
   ];
-  const locked = [...a.noRead.map((p) => `\`${p}\` (읽기·수정 금지)`), ...a.noEdit.map((p) => `\`${p}\` (수정 금지)`)];
+  const locked = [...a.noRead.map((p) => `\`${p}\` (${B.noRead})`), ...a.noEdit.map((p) => `\`${p}\` (${B.noEdit})`)];
+  const userChecks = a.checks.filter((c) => c.command !== DOCS_CHECK_CMD);
+  const dirs = a.dirs.filter((d) => d.name);
   return [
     START,
-    '## 구조',
-    list(a.dirs.filter((d) => d.name).map((d) => `- \`${d.name}/\`${d.note ? ` — ${d.note}` : ''}`)),
+    ...(rows.length ? [`## ${B.map}`, `| ${B.mapCols[0]} | ${B.mapCols[1]} |`, '|---|---|', ...rows.map(([what, where]) => `| ${what} | [${where}](${where}) |`), ''] : []),
+    ...(dirs.length ? [`## ${B.structure}`, ...dirs.map((d) => `- \`${d.name}/\`${d.note ? ` — ${d.note}` : ''}`), ''] : []),
+    `## ${B.rules}`,
+    ...rules.map((r) => `- ${r}`),
+    ...(locked.length ? ['', `${B.locked}: ${locked.join(', ')}`] : []),
     '',
-    '## 작업 규칙',
-    rules.join('\n'),
-    ...(locked.length ? ['', '권한 규칙으로 차단된 경로: ' + locked.join(', ')] : []),
-    '',
-    '## 검증 방법',
-    a.checks.length ? ['| 검사 | 명령 |', '|---|---|', ...a.checks.map((c) => `| ${c.label} | \`${c.command}\` |`)].join('\n') : '(검증 명령 없음)',
-    ...(a.run.command ? ['', '## 앱 실행', `\`${a.run.command}\`${a.run.url ? ` → ${a.run.url}` : ''}`] : []),
-    ...(a.loop ? ['', '## 기능 구현 루프', '여러 파일에 걸친 기능은 `/harness-feature <설명>` 으로 진행한다: Planner → 계약 → Generator ⇄ Evaluator. 스펙·계약·판정·진행 기록은 `docs/harness/`에 남는다.'] : []),
+    `## ${B.checks}`,
+    userChecks.length ? [`| ${B.check} | ${B.command} |`, '|---|---|', ...userChecks.map((c) => `| ${c.label} | \`${c.command}\` |`)].join('\n') : B.none,
+    ...(a.run.command ? ['', `## ${B.run}`, `\`${a.run.command}\`${a.run.url ? ` → ${a.run.url}` : ''}`] : []),
+    ...(a.kb ? ['', `## ${B.session}`, ...B.sessionSteps.map((s, i) => `${i + 1}. ${s}`)] : []),
+    ...(a.loop ? ['', `## ${B.loop}`, B.loopBody] : []),
     END,
   ].join('\n');
 }
 
-// 관리 블록이 있으면 교체, 없으면 끝에 덧붙임
+// 관리 블록이 있으면 교체(옛 버전의 시작 문구도 인식), 없으면 끝에 덧붙임
 function withBlock(existing, block) {
   if (existing == null) return null;
-  const i = existing.indexOf(START), j = existing.indexOf(END);
+  const i = existing.indexOf(START_TAG), j = existing.indexOf(END);
   if (i !== -1 && j > i) return existing.slice(0, i) + block + existing.slice(j + END.length);
   return `${existing.replace(/\s*$/, '')}\n\n${block}\n`;
 }
@@ -70,9 +121,7 @@ function mergeSettings(existing, a, previousDeny) {
   const s = existing ? JSON.parse(existing) : {};
   // 우리가 넣었던 Stop 훅과 deny 규칙만 걷어내고 새로 넣는다. 사용자가 직접 넣은 항목은 건드리지 않는다.
   const stop = (s.hooks?.Stop ?? []).filter((g) => !JSON.stringify(g).includes('verify-gate.mjs'));
-  if (a.gate) {
-    stop.push({ hooks: [{ type: 'command', command: 'node', args: [`\${CLAUDE_PROJECT_DIR}/${GATE}`], timeout: 900, statusMessage: '완료 게이트: 검증 명령 실행 중' }] });
-  }
+  if (a.gate) stop.push({ hooks: [{ type: 'command', command: 'node', args: [`\${CLAUDE_PROJECT_DIR}/${GATE}`], timeout: 900 }] });
   s.hooks = { ...s.hooks, Stop: stop };
   if (!stop.length) delete s.hooks.Stop;
   if (!Object.keys(s.hooks).length) delete s.hooks;
@@ -88,32 +137,56 @@ function mergeSettings(existing, a, previousDeny) {
 // → [{ path, status: 'new' | 'update' | 'same', content }]
 export function plan(dir, input) {
   const a = { ...DEFAULTS, ...input, run: { ...DEFAULTS.run, ...input.run } };
-  a.checks = a.checks.filter((c) => c.command);
+  const L = CONTENT[a.lang] ?? CONTENT.en;
+  const lang = CONTENT[a.lang] ? a.lang : 'en';
+  // 지식 베이스를 켜면 링크 검사가 게이트에 붙는다 (OpenAI: "docs are verified mechanically")
+  a.checks = a.checks.filter((c) => c.command && c.command !== DOCS_CHECK_CMD);
+  if (a.kb && a.gate) a.checks.push({ kind: 'docs', label: L.block.docsCheck, command: DOCS_CHECK_CMD });
+  a.dirs = a.dirs.map(({ name, note }) => ({ name, note })); // 화면용 필드(peek, auto, role)는 저장하지 않는다
+
   const read = (p) => (existsSync(join(dir, p)) ? readFileSync(join(dir, p), 'utf8') : null);
   const previous = JSON.parse(read('.claude/harness.json') ?? '{}');
-  const checksList = a.checks.length ? a.checks.map((c) => `  - ${c.label}: \`${c.command}\``).join('\n') : '  - (없음)';
-  const vars = { checksList, runCommand: a.run.command || '(없음)', runUrl: a.run.url || '(없음)', maxAttempts: String(a.maxAttempts) };
+  const archPath = a.kb ? findArchitecture(dir) : null;
+  const checksList = a.checks.length ? a.checks.map((c) => `  - ${c.label}: \`${c.command}\``).join('\n') : '  - (none)';
+  const vars = {
+    checksList, runCommand: a.run.command || '(none)', runUrl: a.run.url || '(none)', maxAttempts: String(a.maxAttempts),
+    featuresStep: a.features ? L.featuresStep : '',
+  };
 
-  const block = agentsBlock(a);
+  const block = agentsBlock(a, L, archPath);
   const claudeMd = read('CLAUDE.md');
-  const files = {
-    '.claude/harness.json': JSON.stringify({ version: 1, ...a, managedDeny: denyRules(a) }, null, 2) + '\n',
-    'AGENTS.md': withBlock(read('AGENTS.md'), block) ?? `# ${a.name}\n\n${a.summary}\n\n${block}\n`,
+  const managed = {
+    '.claude/harness.json': JSON.stringify({ version: 1, ...a, lang, managedDeny: denyRules(a) }, null, 2) + '\n',
+    'AGENTS.md': withBlock(read('AGENTS.md'), block) ?? `# ${a.name}\n\n${a.summary ? `${a.summary}\n\n` : ''}${block}\n`,
     // CLAUDE.md가 있으면 Claude는 AGENTS.md를 읽지 않는다 → import 한 줄로 연결. 옛 버전 Claude Code도 이걸로 읽는다.
     'CLAUDE.md': claudeMd == null ? '@AGENTS.md\n' : /^@AGENTS\.md\s*$/m.test(claudeMd) ? claudeMd : `@AGENTS.md\n\n${claudeMd}`,
     '.claude/settings.json': mergeSettings(read('.claude/settings.json'), a, previous.managedDeny ?? []),
   };
-  if (a.gate) files[GATE] = tpl('verify-gate.mjs');
+  if (a.gate) managed[GATE] = tpl('verify-gate.mjs');
+  if (a.gate && a.kb) managed[DOCS_CHECK] = tpl('check-docs.mjs');
   if (a.loop) {
-    for (const r of ['planner', 'generator', 'evaluator']) files[`.claude/agents/harness-${r}.md`] = fill(tpl(`harness-${r}.md`), vars);
-    files['.claude/skills/harness-feature/SKILL.md'] = fill(tpl('harness-feature.md'), vars);
-    files['docs/harness/progress.md'] = read('docs/harness/progress.md') ?? '# 하네스 진행 기록\n\n';
+    for (const r of ['planner', 'generator', 'evaluator']) managed[`.claude/agents/harness-${r}.md`] = fill(tpl(`${lang}/harness-${r}.md`), vars);
+    managed['.claude/skills/harness-feature/SKILL.md'] = fill(tpl(`${lang}/harness-feature.md`), vars);
   }
 
-  return Object.entries(files).map(([path, content]) => {
-    const before = read(path);
-    return { path, content, status: before == null ? 'new' : before === content ? 'same' : 'update' };
-  });
+  // 시작 문서: 없을 때만 만든다. 이미 있으면 사용자 것이므로 그대로 둔다.
+  const starters = {
+    ...(a.kb ? knowledgeBase(a, L, archPath) : {}),
+    ...(a.kb || a.loop ? { 'docs/exec-plans/progress.md': L.docs.progress } : {}),
+    ...(a.features ? { 'docs/features.json': '[]\n' } : {}),
+  };
+  if (a.loop && !a.kb) Object.assign(starters, { 'docs/product-specs/index.md': L.docs.specsIndex, 'docs/exec-plans/active/.gitkeep': '', 'docs/exec-plans/completed/.gitkeep': '' });
+
+  return [
+    ...Object.entries(managed).map(([path, content]) => {
+      const before = read(path);
+      return { path, content, status: before == null ? 'new' : before === content ? 'same' : 'update' };
+    }),
+    ...Object.entries(starters).map(([path, content]) => {
+      const before = read(path);
+      return before == null ? { path, content, status: 'new' } : { path, content: before, status: 'same' };
+    }),
+  ];
 }
 
 export function install(dir, files) {
