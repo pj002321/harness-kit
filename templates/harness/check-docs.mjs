@@ -43,9 +43,9 @@ export function brokenLinks(root, overrides = {}) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const root = process.env.CLAUDE_PROJECT_DIR || process.env.CURSOR_PROJECT_DIR || process.cwd();
   let lang = 'en';
-  try { lang = JSON.parse(readFileSync(join(root, '.claude', 'harness.json'), 'utf8')).lang ?? 'en'; } catch {}
+  try { lang = JSON.parse(readFileSync(join(root, '.harness', 'config.json'), 'utf8')).lang ?? 'en'; } catch {}
   const broken = brokenLinks(root);
   if (broken.length) {
     const [title, fix] = MSG[lang] ?? MSG.en;
