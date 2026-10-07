@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { detect } from './detect.js';
 import { plan, install } from './generate.js';
-import { brokenLinks } from '../templates/check-docs.mjs';
+import { brokenLinks } from '../templates/harness/check-docs.mjs';
 
 const UI = new URL('../ui/', import.meta.url);
 const STATIC = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/i18n.js': ['i18n.js', 'text/javascript'] };
@@ -40,7 +40,9 @@ const body = (req) => new Promise((resolve, reject) => {
 
 export function startServer({ dir, port = 0, onInstalled = () => {} }) {
   const token = randomBytes(16).toString('hex');
-  const saved = existsSync(join(dir, '.claude/harness.json')) ? JSON.parse(readFileSync(join(dir, '.claude/harness.json'), 'utf8')) : null;
+  // 지난 답: 새 위치(.harness/config.json) 또는 예전 위치(.claude/harness.json)
+  const savedPath = ['.harness/config.json', '.claude/harness.json'].map((p) => join(dir, p)).find(existsSync);
+  const saved = savedPath ? JSON.parse(readFileSync(savedPath, 'utf8')) : null;
 
   const server = createServer(async (req, res) => {
     const send = (code, data, type = 'application/json') => {
@@ -64,7 +66,7 @@ export function startServer({ dir, port = 0, onInstalled = () => {} }) {
         const a = await body(req);
         const files = plan(dir, a);
         // 게이트에 링크 검사가 붙으면, 설치 직후 상태에서 이미 깨진 링크가 있는지 미리 본다 (있으면 AI가 영원히 못 끝낸다)
-        const broken = a.kb && a.gate ? brokenLinks(dir, Object.fromEntries(files.filter((f) => f.status !== 'same').map((f) => [f.path, f.content]))) : [];
+        const broken = a.kb && a.gate ? brokenLinks(dir, Object.fromEntries(files.filter((f) => f.status === 'new' || f.status === 'update').map((f) => [f.path, f.content]))) : [];
         return send(200, { files, broken });
       }
       if (pathname === '/api/install' && req.method === 'POST') {
