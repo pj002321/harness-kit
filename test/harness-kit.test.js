@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -8,7 +8,8 @@ import { request } from 'node:http';
 import { detect } from '../src/detect.js';
 import { plan, install } from '../src/generate.js';
 import { startServer } from '../src/server.js';
-import { brokenLinks } from '../templates/check-docs.mjs';
+import { brokenLinks } from '../templates/harness/check-docs.mjs';
+import { decide, globToRe } from '../templates/harness/guard.mjs';
 import { I18N } from '../ui/i18n.js';
 
 const project = (files) => {
@@ -23,7 +24,7 @@ const project = (files) => {
 const answers = (over = {}) => ({
   name: 'demo', summary: '데모', dirs: [{ name: 'src', note: '코드' }], rules: ['한국어로 커밋'],
   checks: [{ label: '테스트', command: 'node -e "process.exit(0)"' }], run: { command: 'npm run dev', url: 'http://localhost:5173' },
-  noRead: ['.env'], noEdit: ['migrations/**'], denyCommands: ['git push --force*'], gate: true, loop: true, maxAttempts: 3, lang: 'ko', kb: false, ...over,
+  noRead: ['.env'], noEdit: ['migrations/**'], denyCommands: ['git push --force*'], gate: true, loop: true, maxAttempts: 3, lang: 'ko', kb: false, agents: ['claude'], ...over,
 });
 const write = (dir, a) => install(dir, plan(dir, a));
 const read = (dir, p) => readFileSync(join(dir, p), 'utf8');
@@ -53,7 +54,7 @@ test('plan: 빈 프로젝트에 전부 새로 만들고, 다시 돌리면 바뀌
   assert.ok(files.every((f) => f.status === 'new'));
   assert.deepEqual(files.map((f) => f.path).sort(), [
     '.claude/agents/harness-evaluator.md', '.claude/agents/harness-generator.md', '.claude/agents/harness-planner.md',
-    '.claude/harness.json', '.claude/hooks/verify-gate.mjs', '.claude/settings.json', '.claude/skills/harness-feature/SKILL.md',
+    '.claude/settings.json', '.claude/skills/harness-feature/SKILL.md', '.harness/config.json', '.harness/gate.mjs',
     'AGENTS.md', 'CLAUDE.md', 'docs/exec-plans/active/.gitkeep', 'docs/exec-plans/completed/.gitkeep', 'docs/exec-plans/progress.md',
     'docs/product-specs/index.md',
   ]);
@@ -92,7 +93,7 @@ test('plan: 기존 AGENTS.md·CLAUDE.md·settings.json의 사용자 내용은 �
 test('완료 게이트: 검사가 실패하면 exit 2로 종료를 막고, 바뀐 게 없으면 통과', () => {
   const dir = project({ 'a.txt': '1' });
   spawnSync('git', ['init', '-q'], { cwd: dir });
-  const gate = () => spawnSync(process.execPath, [join(dir, '.claude/hooks/verify-gate.mjs')], { input: '{"stop_hook_active":false}', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+  const gate = () => spawnSync(process.execPath, [join(dir, '.harness/gate.mjs')], { input: '{"stop_hook_active":false}', encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
 
   write(dir, answers({ checks: [{ label: '단위 테스트', command: 'node -e "console.log(\'boom\'); process.exit(3)"' }] }));
   const r = gate();
@@ -135,13 +136,13 @@ test('plan: 지식 베이스 — 없는 문서만 만들고, 링크 검사를 �
   assert.ok(!by['ARCHITECTURE.md']);                                   // 이미 있는 docs/architecture.md를 쓴다
   assert.equal(by['docs/SECURITY.md'].status, 'same');                 // 사용자 문서는 그대로
   assert.equal(by['docs/SECURITY.md'].content, 'my rules\n');
-  for (const p of ['docs/design-docs/core-beliefs.md', 'docs/QUALITY_SCORE.md', 'docs/features.json', '.claude/hooks/check-docs.mjs']) assert.equal(by[p].status, 'new', p);
+  for (const p of ['docs/design-docs/core-beliefs.md', 'docs/QUALITY_SCORE.md', 'docs/features.json', '.harness/check-docs.mjs']) assert.equal(by[p].status, 'new', p);
   assert.match(by['AGENTS.md'].content, /\[docs\/architecture\.md\]\(docs\/architecture\.md\)/);
   assert.match(by['AGENTS.md'].content, /At the start of every session/);
   assert.match(by['.claude/skills/harness-feature/SKILL.md'].content, /docs\/features\.json/);
-  assert.ok(JSON.parse(by['.claude/harness.json'].content).checks.some((c) => c.command === 'node .claude/hooks/check-docs.mjs'));
+  assert.ok(JSON.parse(by['.harness/config.json'].content).checks.some((c) => c.command === 'node .harness/check-docs.mjs'));
   // 설치 직후 상태 기준으로 깨진 링크가 없어야 한다
-  assert.deepEqual(brokenLinks(dir, Object.fromEntries(files.filter((f) => f.status !== 'same').map((f) => [f.path, f.content]))), []);
+  assert.deepEqual(brokenLinks(dir, Object.fromEntries(files.filter((f) => f.status === 'new' || f.status === 'update').map((f) => [f.path, f.content]))), []);
 });
 
 test('check-docs: 깨진 상대 링크만 잡는다 (코드·URL·앵커 제외)', () => {
@@ -166,4 +167,76 @@ test('i18n: 세 언어의 UI 문구 키가 같다', () => {
   const keys = (o, p = '') => Object.entries(o).flatMap(([k, v]) => (v && typeof v === 'object' && !Array.isArray(v) ? keys(v, `${p}${k}.`) : [`${p}${k}`])).sort();
   assert.deepEqual(keys(I18N.ko), keys(I18N.en));
   assert.deepEqual(keys(I18N.ja), keys(I18N.en));
+});
+
+test('guard: Codex·Cursor 입력에서 보호 경로·금지 명령을 막는다', () => {
+  const cfg = { noRead: ['.env', '.env.*'], noEdit: ['migrations/**'], denyCommands: ['git push --force*', 'rm -rf *'] };
+  const root = '/repo';
+  const codexBash = (command) => decide({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }, cfg, root);
+  const patch = (body) => decide({ hook_event_name: 'PreToolUse', tool_name: 'apply_patch', tool_input: { command: `*** Begin Patch\n${body}\n*** End Patch` } }, cfg, root);
+  assert.equal(codexBash('npm test'), null);
+  assert.deepEqual(codexBash('npm test && git push --force origin main'), ['git push --force origin main', 'git push --force*']);
+  assert.equal(codexBash('cat config/.env.local')[1], '.env.*');            // 읽기 금지 파일을 이름으로 언급
+  assert.equal(patch('*** Update File: src/app.js'), null);
+  assert.equal(patch('*** Add File: migrations/002.sql')[1], 'migrations/**');
+  assert.equal(patch('*** Update File: .harness/config.json')[1], '.harness/**'); // 하네스 자기 보호
+  assert.equal(patch('*** Update File: src/migrations/x.sql'), null);          // 루트 기준 고정
+  assert.equal(decide({ hook_event_name: 'beforeReadFile', file_path: '/repo/app/.env' }, cfg, root)[1], '.env');
+  assert.equal(decide({ hook_event_name: 'beforeReadFile', file_path: '/repo/README.md' }, cfg, root), null);
+  assert.ok(globToRe('.env').test('a/b/.env') && !globToRe('.env').test('a/.envrc'));
+});
+
+test('게이트: Cursor 형식은 종료를 막는 대신 followup_message로 다시 일하게 한다', () => {
+  const dir = project({ 'a.txt': '1' });
+  spawnSync('git', ['init', '-q'], { cwd: dir });
+  write(dir, answers({ agents: ['cursor'], checks: [{ label: 'T', command: 'node -e "process.exit(1)"' }] }));
+  const run = (input) => spawnSync(process.execPath, [join(dir, '.harness/gate.mjs'), '--cursor'], { input, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: '', CURSOR_PROJECT_DIR: dir } });
+  const r = run('{"status":"completed","loop_count":0}');
+  assert.equal(r.status, 0);
+  assert.match(JSON.parse(r.stdout).followup_message, /T: `node -e/);
+  assert.deepEqual(JSON.parse(run('{"status":"aborted"}').stdout), {}); // 사용자가 멈춘 건 건드리지 않는다
+});
+
+test('plan: Codex·Cursor 선택 시 각 도구 형식으로 연결 파일을 만든다', () => {
+  const dir = project({ '.codex/config.toml': 'model = "x"\n', '.cursor/hooks.json': JSON.stringify({ version: 1, hooks: { afterFileEdit: [{ command: 'fmt.sh' }] } }) });
+  const files = plan(dir, answers({ agents: ['codex', 'cursor'], lang: 'en' }));
+  const by = Object.fromEntries(files.map((f) => [f.path, f]));
+  assert.ok(!by['.claude/settings.json'] && !by['CLAUDE.md']);           // Claude를 안 고르면 Claude 파일도 없다
+  const codex = JSON.parse(by['.codex/hooks.json'].content).hooks;
+  assert.match(codex.Stop[0].hooks[0].command, /\.harness\/gate\.mjs/);
+  assert.equal(codex.PreToolUse[0].matcher, '^(Bash|apply_patch)$');
+  assert.equal(by['.codex/config.toml'].content, 'model = "x"\n\n[features]\ncodex_hooks = true\n');
+  const ev = by['.codex/agents/harness-evaluator.toml'].content;
+  assert.match(ev, /^name = "harness-evaluator"$/m);
+  assert.match(ev, /^sandbox_mode = "read-only"$/m);
+  assert.doesNotMatch(by['.codex/agents/harness-generator.toml'].content, /sandbox_mode/);
+  assert.ok(by['.agents/skills/harness-feature/SKILL.md']);
+  const cur = JSON.parse(by['.cursor/hooks.json'].content).hooks;
+  assert.deepEqual(cur.afterFileEdit, [{ command: 'fmt.sh' }]);           // 사용자 훅 보존
+  assert.equal(cur.stop[0].command, 'node .harness/gate.mjs --cursor');
+  const m = new RegExp(cur.beforeShellExecution[0].matcher);            // 금지 명령에만 걸린다
+  assert.ok(m.test('git push --force origin') && !m.test('git status'));
+  assert.ok(by['.cursor/agents/harness-evaluator.md'].content.includes('readonly: true'));
+  assert.doesNotMatch(by['.cursor/commands/harness-feature.md'].content, /^---|\$ARGUMENTS/);
+});
+
+test('plan: 예전 버전 설치를 정리하고, 해제한 에이전트에서 우리 항목만 걷어낸다', () => {
+  const dir = project({
+    '.claude/harness.json': JSON.stringify({ managedDeny: ['Read(.env)', 'Edit(/.claude/harness.json)'] }),
+    '.claude/hooks/verify-gate.mjs': 'old', '.claude/hooks/my-own.sh': 'mine',
+    '.claude/settings.json': JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node', args: ['${CLAUDE_PROJECT_DIR}/.claude/hooks/verify-gate.mjs'] }] }] }, permissions: { deny: ['Read(.env)', 'Edit(/.claude/harness.json)', 'Bash(curl *)'] } }),
+  });
+  write(dir, answers({ agents: ['claude', 'codex'] }));
+  assert.ok(!existsSync(join(dir, '.claude/harness.json')) && !existsSync(join(dir, '.claude/hooks/verify-gate.mjs')));
+  assert.ok(existsSync(join(dir, '.claude/hooks/my-own.sh')));
+  const s = JSON.parse(read(dir, '.claude/settings.json'));
+  assert.equal(s.hooks.Stop.length, 1);
+  assert.match(s.hooks.Stop[0].hooks[0].args[0], /\.harness\/gate\.mjs/);
+  assert.ok(s.permissions.deny.includes('Bash(curl *)') && !s.permissions.deny.includes('Edit(/.claude/harness.json)'));
+
+  // Codex 해제 → .codex/hooks.json에서 우리 항목이 빠지고, Codex 전용 파일은 지워진다
+  write(dir, answers({ agents: ['claude'] }));
+  assert.equal(read(dir, '.codex/hooks.json'), '{}\n');
+  assert.ok(!existsSync(join(dir, '.codex/agents/harness-evaluator.toml')) && !existsSync(join(dir, '.agents/skills/harness-feature/SKILL.md')));
+  assert.ok(existsSync(join(dir, '.claude/agents/harness-evaluator.md')));
 });
