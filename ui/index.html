@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harness Kit</title>
+<style>
+  :root {
+    --bg: #f5f4ef; --panel: #fff; --ink: #1d1d1b; --dim: #6c6b66; --line: #e2e0d8; --accent: #2d5bd7; --ok: #1a7f37; --bad: #c4311b; --soft: #eef1fb;
+    font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111211; --panel: #1b1c1b; --ink: #ebeae4; --dim: #9b9a93; --line: #2f302d; --accent: #7aa2ff; --ok: #4ac26b; --bad: #ff7b6b; --soft: #1e2333; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); }
+  .shell { max-width: 880px; margin: 0 auto; padding: 32px 24px 64px; }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
+  header .dir { color: var(--dim); font: 12px ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  ol.steps { list-style: none; display: flex; gap: 4px; padding: 0; margin: 0 0 20px; counter-reset: s; }
+  ol.steps li { flex: 1; counter-increment: s; font-size: 12px; color: var(--dim); border-top: 3px solid var(--line); padding-top: 6px; }
+  ol.steps li::before { content: counter(s) " "; font-weight: 700; }
+  ol.steps li.done { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  ol.steps li.now { border-color: var(--accent); color: var(--ink); font-weight: 600; }
+
+  main { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 28px; min-height: 380px; }
+  h2 { margin: 0 0 4px; font-size: 20px; letter-spacing: -.01em; }
+  .lead { margin: 0 0 22px; color: var(--dim); }
+  label.f { display: block; margin: 16px 0 6px; font-weight: 600; font-size: 13px; }
+  .hint { color: var(--dim); font-size: 12px; margin-top: 4px; }
+  input[type=text], input[type=number], textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; }
+  textarea { min-height: 84px; font: 13px/1.5 ui-monospace, monospace; resize: vertical; }
+  input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .mono { font-family: ui-monospace, monospace; font-size: 13px; }
+
+  .row { display: grid; grid-template-columns: 130px 1fr auto auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .dirrow { display: grid; grid-template-columns: 180px 1fr; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .dirrow code { font-size: 13px; }
+  .result { grid-column: 2 / -1; font-size: 12px; }
+  .result pre { margin: 4px 0 0; max-height: 160px; overflow: auto; padding: 8px; background: var(--bg); border-radius: 6px; white-space: pre-wrap; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+
+  button { font: inherit; border-radius: 8px; padding: 7px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.ghost { border-color: transparent; color: var(--dim); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .chips button { padding: 2px 10px; font-size: 12px; border-radius: 99px; }
+
+  .callout { margin-top: 18px; padding: 12px 14px; background: var(--soft); border-radius: 8px; font-size: 13px; }
+  .callout b { display: block; margin-bottom: 2px; }
+
+  .toggle { display: flex; gap: 14px; align-items: flex-start; padding: 16px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 12px; cursor: pointer; }
+  .toggle input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--accent); }
+  .toggle h3 { margin: 0 0 2px; font-size: 15px; } .toggle p { margin: 0; color: var(--dim); font-size: 13px; }
+
+  .files { display: grid; grid-template-columns: 260px 1fr; gap: 14px; }
+  .files ul { list-style: none; margin: 0; padding: 0; }
+  .files li button { width: 100%; text-align: left; border: 0; border-radius: 6px; padding: 6px 8px; font: 12px ui-monospace, monospace; display: flex; gap: 8px; }
+  .files li button.sel { background: var(--soft); }
+  .badge { font: 600 10px ui-sans-serif, system-ui; border-radius: 4px; padding: 1px 5px; flex: none; }
+  .badge.new { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .badge.update { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+  .badge.same { color: var(--dim); }
+  .files pre { margin: 0; padding: 12px; background: var(--bg); border-radius: 8px; max-height: 420px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+
+  nav { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; }
+  nav .why { color: var(--bad); font-size: 13px; }
+  .done h2 { color: var(--ok); }
+  .done code { background: var(--bg); padding: 2px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header><h1>Harness Kit</h1><span class="dir" id="dir"></span></header>
+  <ol class="steps" id="steps"></ol>
+  <main id="main" aria-live="polite"><p class="lead">프로젝트를 분석하는 중…</p></main>
+  <nav id="nav"></nav>
+</div>
+<script src="/app.js" type="module"></script>
+</body>
+</html>
