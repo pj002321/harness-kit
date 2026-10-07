@@ -1,0 +1,13 @@
+{
+  "name": "harness-kit",
+  "version": "0.1.0",
+  "description": "프로젝트에 Claude Code 하네스(완료 게이트 · 보호 규칙 · Planner/Generator/Evaluator 루프)를 단계별 마법사로 설치한다",
+  "type": "module",
+  "bin": { "harness-kit": "bin/harness-kit.js" },
+  "files": ["bin", "src", "templates", "ui"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT"
+}
