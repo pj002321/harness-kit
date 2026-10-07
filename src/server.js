@@ -9,9 +9,10 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { detect } from './detect.js';
 import { plan, install } from './generate.js';
+import { brokenLinks } from '../templates/check-docs.mjs';
 
 const UI = new URL('../ui/', import.meta.url);
-const STATIC = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'] };
+const STATIC = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/i18n.js': ['i18n.js', 'text/javascript'] };
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'";
 
 function runCommand(command, cwd) {
@@ -59,7 +60,13 @@ export function startServer({ dir, port = 0, onInstalled = () => {} }) {
     try {
       if (pathname === '/api/state') return send(200, { dir, detected: detect(dir), saved });
       if (pathname === '/api/run' && req.method === 'POST') return send(200, await runCommand((await body(req)).command, dir));
-      if (pathname === '/api/plan' && req.method === 'POST') return send(200, plan(dir, await body(req)));
+      if (pathname === '/api/plan' && req.method === 'POST') {
+        const a = await body(req);
+        const files = plan(dir, a);
+        // 게이트에 링크 검사가 붙으면, 설치 직후 상태에서 이미 깨진 링크가 있는지 미리 본다 (있으면 AI가 영원히 못 끝낸다)
+        const broken = a.kb && a.gate ? brokenLinks(dir, Object.fromEntries(files.filter((f) => f.status !== 'same').map((f) => [f.path, f.content]))) : [];
+        return send(200, { files, broken });
+      }
       if (pathname === '/api/install' && req.method === 'POST') {
         const files = plan(dir, await body(req));
         install(dir, files);

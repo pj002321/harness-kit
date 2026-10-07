@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,6 +16,9 @@
   body { margin: 0; background: var(--bg); color: var(--ink); }
   .shell { max-width: 880px; margin: 0 auto; padding: 32px 24px 64px; }
   header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; }
+  .lang { margin-left: auto; display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; flex: none; }
+  .lang button { border: 0; padding: 3px 10px; font-size: 12px; border-radius: 6px; color: var(--dim); background: none; }
+  .lang button.sel { background: var(--soft); color: var(--ink); font-weight: 600; }
   header h1 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
   header .dir { color: var(--dim); font: 12px ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -29,7 +32,9 @@
   h2 { margin: 0 0 4px; font-size: 20px; letter-spacing: -.01em; }
   .lead { margin: 0 0 22px; color: var(--dim); }
   label.f { display: block; margin: 16px 0 6px; font-weight: 600; font-size: 13px; }
-  .hint { color: var(--dim); font-size: 12px; margin-top: 4px; }
+  .hint { color: var(--dim); font-size: 12px; margin-top: 4px; font-weight: 400; }
+  .blank { margin-top: 20px; }
+  input.guessed { color: var(--dim); font-style: italic; }
   input[type=text], input[type=number], textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; }
   textarea { min-height: 84px; font: 13px/1.5 ui-monospace, monospace; resize: vertical; }
   input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -47,6 +52,7 @@
   button.ghost { border-color: transparent; color: var(--dim); }
   button:disabled { opacity: .45; cursor: not-allowed; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .chips button { text-align: left; }
   .chips button { padding: 2px 10px; font-size: 12px; border-radius: 99px; }
 
   .callout { margin-top: 18px; padding: 12px 14px; background: var(--soft); border-radius: 8px; font-size: 13px; }
@@ -56,6 +62,9 @@
   .toggle input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--accent); }
   .toggle h3 { margin: 0 0 2px; font-size: 15px; } .toggle p { margin: 0; color: var(--dim); font-size: 13px; }
 
+  .src { font: 500 11px ui-sans-serif, system-ui; color: var(--dim); margin-left: 6px; }
+  ul.tree { list-style: none; margin: 0 0 8px; padding: 10px 12px; background: var(--bg); border-radius: 8px; columns: 2; font-size: 12px; }
+  ul.tree li { break-inside: avoid; padding: 2px 0; }
   .files { display: grid; grid-template-columns: 260px 1fr; gap: 14px; }
   .files ul { list-style: none; margin: 0; padding: 0; }
   .files li button { width: 100%; text-align: left; border: 0; border-radius: 6px; padding: 6px 8px; font: 12px ui-monospace, monospace; display: flex; gap: 8px; }
@@ -74,9 +83,9 @@
 </head>
 <body>
 <div class="shell">
-  <header><h1>Harness Kit</h1><span class="dir" id="dir"></span></header>
+  <header><h1>Harness Kit</h1><span class="dir" id="dir"></span><div class="lang" id="lang" role="group" aria-label="Language"></div></header>
   <ol class="steps" id="steps"></ol>
-  <main id="main" aria-live="polite"><p class="lead">프로젝트를 분석하는 중…</p></main>
+  <main id="main" aria-live="polite"><p class="lead">Analyzing project…</p></main>
   <nav id="nav"></nav>
 </div>
 <script src="/app.js" type="module"></script>
