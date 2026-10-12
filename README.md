@@ -10,6 +10,40 @@ npx github:pj002321/harness-kit
 
 A wizard opens in your browser (English · 한국어 · 日本語). Answer 8 steps and a harness tailored to that project is installed. Zero dependencies; no AI is called during installation.
 
+<p align="center"><img src="docs/images/step-6.png" width="720" alt="Components step: the Planner → Generator ⇄ Evaluator loop and the completion gate, drawn for your project"></p>
+
+## Quick start
+
+Requires Node.js 20+.
+
+**1. Run it in your project.** The wizard opens at `http://127.0.0.1:<port>`. If no window appears, paste the printed URL into a browser. `--no-open` skips opening it; `Ctrl+C` quits.
+
+```bash
+cd my-project
+npx github:pj002321/harness-kit      # or: npx github:pj002321/harness-kit path/to/project
+```
+
+**2. Answer the steps.** Most answers are pre-filled from your project (name, folders, test commands, `.env` files). Usually you only check them and click **Next**.
+
+| Pick your agents | Run your checks right there |
+|---|---|
+| <img src="docs/images/step-0.png" alt="Agents step: Claude Code, Codex, Cursor with what each enforces"> | <img src="docs/images/step-3.png" alt="Checks step: npm test passed in 0.4s"> |
+
+**3. Review and install.** Every file that will be created or changed is listed with its content. Click **Install**.
+
+| Review every file | Installed |
+|---|---|
+| <img src="docs/images/step-7.png" alt="Review step: file list with a preview of each file"> | <img src="docs/images/done.png" alt="Installed screen with next steps"> |
+
+**Then just work as usual.** Open your agent in that folder (`claude`, `codex` or Cursor). When it tries to finish, your checks run, and it can't finish until they pass. For a bigger feature, run the full loop:
+
+```text
+/harness-feature add login        # Claude Code, Cursor
+$harness-feature add login        # Codex
+```
+
+To change anything later, run the same `npx` command again. Your previous answers are pre-filled.
+
 ## What is a harness?
 
 Code outside the model that **controls the model's work through structure**. This kit combines two write-ups:
@@ -50,6 +84,18 @@ Sources: [Codex hooks](https://developers.openai.com/codex/hooks), [Codex subage
 | 7 Review | Every file that will be created or changed → install | |
 
 Install is locked if the gate is on but a check hasn't passed, or if the knowledge base would contain broken links right after install — either would leave the AI unable to ever finish.
+
+<details>
+<summary>Screenshots of every step</summary>
+
+| | |
+|---|---|
+| **1 Agents**<br><img src="docs/images/step-0.png" alt="Agents step"> | **2 Project**<br><img src="docs/images/step-1.png" alt="Project step"> |
+| **3 Structure**<br><img src="docs/images/step-2.png" alt="Structure step"> | **4 Checks**<br><img src="docs/images/step-3.png" alt="Checks step"> |
+| **5 Run & verify**<br><img src="docs/images/step-4.png" alt="Run and verify step"> | **6 Guardrails**<br><img src="docs/images/step-5.png" alt="Guardrails step"> |
+| **7 Components**<br><img src="docs/images/step-6.png" alt="Components step"> | **8 Review**<br><img src="docs/images/step-7.png" alt="Review step"> |
+
+</details>
 
 ## What gets installed
 
